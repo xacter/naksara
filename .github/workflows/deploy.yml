@@ -33,7 +33,7 @@ jobs:
           for name in naksara nksr naksarapanel; do
             [ "$cur" = "$name" ] && break
             res=$(curl -s -X PUT -H "$auth" -H 'Content-Type: application/json' -d "{\"subdomain\":\"$name\"}" "$api")
-            echo "$name → $(echo "$res" | jq -c '{success, errors}')"
+            echo "::notice title=Alt alan adı $name::$(echo "$res" | jq -c '{success, errors}')"
             if [ "$(echo "$res" | jq -r .success)" = "true" ]; then cur=$name; break; fi
           done
           echo "workers.dev alt alan adı: $cur"
@@ -46,7 +46,7 @@ jobs:
         run: |
           sub=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r '.result.subdomain')
           url="https://app.$sub.workers.dev"
-          sleep 5
+          sleep 20
           login=$(curl -s -o /tmp/l.html -w '%{http_code} %{time_total}s' "$url/")
           api=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/revs")
           title=$(grep -o '<title>[^<]*' /tmp/l.html | sed 's/<title>//')

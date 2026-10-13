@@ -29,19 +29,11 @@ jobs:
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
           auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
           cur=$(curl -s -H "$auth" "$api" | jq -r '.result.subdomain // empty')
-          # Kısa adres: app.<alt-ad>.workers.dev — ilk uygun ad seçilir
-          for name in naksara nksr naksarapanel; do
-            [ "$cur" = "$name" ] && break
-            res=$(curl -s -X PUT -H "$auth" -H 'Content-Type: application/json' -d "{\"subdomain\":\"$name\"}" "$api")
-            echo "::notice title=Alt alan adı $name::$(echo "$res" | jq -c '{success, errors}')"
-            if [ "$(echo "$res" | jq -r .success)" = "true" ]; then cur=$name; break; fi
-          done
-          echo "workers.dev alt alan adı: $cur"
+          if [ -z "$cur" ]; then
+            curl -s -X PUT -H "$auth" -H 'Content-Type: application/json' -d '{"subdomain":"naksara"}' "$api" | jq -c '{success, errors}'
+          fi
       - name: Yayınla
         run: npx -y wrangler@4 deploy
-      - name: Eski adlı Worker'ı kaldır
-        continue-on-error: true
-        run: npx -y wrangler@4 delete --name naksara --force
       - name: Canlı kontrol
         run: |
           sub=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r '.result.subdomain')

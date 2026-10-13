@@ -15,6 +15,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Token
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] && [ -f .deploy-token ]; then
+            t=$(tr -d '\r\n ' < .deploy-token)
+            echo "::add-mask::$t"
+            echo "CLOUDFLARE_API_TOKEN=$t" >> "$GITHUB_ENV"
+          fi
       - name: Dosyaları üret
         run: python3 build/build.py source/naksara.html
       - name: workers.dev alt alan adını hazırla

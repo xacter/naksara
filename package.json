@@ -1,0 +1,13 @@
+{
+  "name": "naksara",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "python3 build/build.py"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": true
+}

@@ -1,0 +1,34 @@
+name: Cloudflare'a yayınla
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency: deploy
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 34ae3af0af445f0ac98d8c40b5917e02
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dosyaları üret
+        run: python3 build/build.py source/naksara.html
+      - name: workers.dev alt alan adını hazırla
+        run: |
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+          auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          cur=$(curl -s -H "$auth" "$api" | jq -r '.result.subdomain // empty')
+          if [ -z "$cur" ]; then
+            for name in aykutbulunmaz naksara-app "naksara-$(openssl rand -hex 3)"; do
+              res=$(curl -s -X PUT -H "$auth" -H 'Content-Type: application/json' -d "{\"subdomain\":\"$name\"}" "$api")
+              echo "$res" | jq -c '{success, errors}'
+              if [ "$(echo "$res" | jq -r .success)" = "true" ]; then cur=$name; break; fi
+            done
+          fi
+          echo "workers.dev alt alan adı: $cur"
+      - name: Yayınla
+        run: npx -y wrangler@4 deploy

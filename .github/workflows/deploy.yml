@@ -29,20 +29,23 @@ jobs:
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
           auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
           cur=$(curl -s -H "$auth" "$api" | jq -r '.result.subdomain // empty')
-          if [ -z "$cur" ]; then
-            for name in aykutbulunmaz naksara-app "naksara-$(openssl rand -hex 3)"; do
-              res=$(curl -s -X PUT -H "$auth" -H 'Content-Type: application/json' -d "{\"subdomain\":\"$name\"}" "$api")
-              echo "$res" | jq -c '{success, errors}'
-              if [ "$(echo "$res" | jq -r .success)" = "true" ]; then cur=$name; break; fi
-            done
-          fi
+          # Kısa adres: app.<alt-ad>.workers.dev — ilk uygun ad seçilir
+          for name in naksara nksr naksarapanel; do
+            [ "$cur" = "$name" ] && break
+            res=$(curl -s -X PUT -H "$auth" -H 'Content-Type: application/json' -d "{\"subdomain\":\"$name\"}" "$api")
+            echo "$name → $(echo "$res" | jq -c '{success, errors}')"
+            if [ "$(echo "$res" | jq -r .success)" = "true" ]; then cur=$name; break; fi
+          done
           echo "workers.dev alt alan adı: $cur"
       - name: Yayınla
         run: npx -y wrangler@4 deploy
+      - name: Eski adlı Worker'ı kaldır
+        continue-on-error: true
+        run: npx -y wrangler@4 delete --name naksara --force
       - name: Canlı kontrol
         run: |
           sub=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r '.result.subdomain')
-          url="https://naksara.$sub.workers.dev"
+          url="https://app.$sub.workers.dev"
           sleep 5
           login=$(curl -s -o /tmp/l.html -w '%{http_code} %{time_total}s' "$url/")
           api=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/revs")

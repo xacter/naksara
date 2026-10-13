@@ -39,3 +39,13 @@ jobs:
           echo "workers.dev alt alan adı: $cur"
       - name: Yayınla
         run: npx -y wrangler@4 deploy
+      - name: Canlı kontrol
+        run: |
+          sub=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r '.result.subdomain')
+          url="https://naksara.$sub.workers.dev"
+          sleep 5
+          login=$(curl -s -o /tmp/l.html -w '%{http_code} %{time_total}s' "$url/")
+          api=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/revs")
+          title=$(grep -o '<title>[^<]*' /tmp/l.html | sed 's/<title>//')
+          enc=$(curl -s -o /dev/null -D - -H 'Accept-Encoding: br, gzip' "$url/" | grep -i '^content-encoding' | tr -d '\r')
+          echo "::notice title=Canlı adres::$url · giriş sayfası: $login ($title) · API korumalı: $api · $enc"

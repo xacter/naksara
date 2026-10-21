@@ -1,0 +1,142 @@
+name: iOS uygulaması
+
+# Yalnızca ios-app dalında ve iOS dosyaları değişince çalışır; siteyi yayınlayan deploy.yml'ye dokunmaz.
+on:
+  push:
+    branches: [ios-app]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+    inputs:
+      testflight:
+        description: "İmzalı sürümü App Store Connect / TestFlight'a yükle"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 1) Apple hesabı gerekmeden: derle, simülatörde aç, ekran görüntüsü al.
+  simulator:
+    name: Derle ve simülatörde dene
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode sürümü
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Projeyi üret (XcodeGen)
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Simülatör için derle
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/Naksara.xcodeproj -scheme Naksara -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee build.log | grep -E 'error:|warning: .*nearly matches|BUILD (SUCCEEDED|FAILED)' || true
+          test -d build/Build/Products/Debug-iphonesimulator/Naksara.app
+
+      - name: Simülatörde aç ve ekran görüntüsü al
+        run: |
+          set -e
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          c=[x for r,l in d.items() if 'iOS' in r for x in l if x['name'].startswith('iPhone')]
+          print(c[-1]['udid'])")
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Naksara.app
+          xcrun simctl launch "$UDID" com.naksara.panel
+          sleep 25
+          mkdir -p shots
+          xcrun simctl io "$UDID" screenshot shots/acilis.png
+          echo "::notice title=Simülatör::Uygulama açıldı, ekran görüntüsü 'naksara-simulator' çıktısında."
+
+      - name: Çıktıları sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naksara-simulator
+          path: |
+            shots/
+            build.log
+          retention-days: 14
+
+  # 2) Apple Developer bilgileri (Secrets) tanımlıysa: imzala ve App Store Connect'e yükle.
+  #    Gerekli Secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (anahtar dosyasının içeriği)
+  testflight:
+    name: İmzala ve TestFlight'a yükle
+    needs: simulator
+    if: github.event_name == 'workflow_dispatch' && inputs.testflight
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bilgileri kontrol et
+        run: |
+          missing=""
+          for v in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do [ -z "${!v}" ] && missing="$missing $v"; done
+          if [ -n "$missing" ]; then echo "::error title=Eksik Secrets::Şunlar tanımlı değil:$missing (Settings > Secrets and variables > Actions)"; exit 1; fi
+
+      - name: Xcode sürümü
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Projeyi üret
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: App Store Connect anahtarı
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - name: Arşivle (imzalı)
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/Naksara.xcodeproj -scheme Naksara -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/Naksara.xcarchive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            archive | tee archive.log | grep -E 'error:|ARCHIVE (SUCCEEDED|FAILED)'
+
+      - name: App Store Connect'e yükle
+        run: |
+          set -o pipefail
+          plutil -replace teamID -string "$APPLE_TEAM_ID" ios/ExportOptions.plist
+          xcodebuild -exportArchive -archivePath build/Naksara.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.plist -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            | tee export.log | grep -E 'error:|EXPORT (SUCCEEDED|FAILED)|Upload'
+          echo "::notice title=Yüklendi::Derleme ${{ github.run_number }} App Store Connect'e gönderildi; birkaç dakika içinde TestFlight'ta görünür."
+
+      - name: Günlükleri sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naksara-testflight-log
+          path: |
+            archive.log
+            export.log
+          retention-days: 14

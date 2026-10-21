@@ -1,0 +1,54 @@
+# XcodeGen proje tanımı. GitHub Actions bu dosyadan Naksara.xcodeproj üretir.
+name: Naksara
+options:
+  bundleIdPrefix: com.naksara
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+targets:
+  Naksara:
+    type: application
+    platform: iOS
+    sources:
+      - path: Naksara
+    info:
+      path: Naksara/Info.plist
+      properties:
+        CFBundleDisplayName: Naksara
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UIUserInterfaceStyle: Light
+        UIStatusBarStyle: UIStatusBarStyleDarkContent
+        UIViewControllerBasedStatusBarAppearance: true
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIRequiredDeviceCapabilities: [arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: Ürün ve stok fotoğrafı çekip panele yüklemek için kamera kullanılır.
+        NSPhotoLibraryUsageDescription: Panele fotoğraf ve görsel yüklemek için fotoğraf arşivinize erişilir.
+        NSPhotoLibraryAddUsageDescription: İndirdiğiniz görselleri fotoğraf arşivinize kaydetmek için kullanılır.
+    settings:
+      base:
+        PRODUCT_NAME: Naksara
+        PRODUCT_BUNDLE_IDENTIFIER: com.naksara.panel
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_BITCODE: NO

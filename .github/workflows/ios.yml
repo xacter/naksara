@@ -12,6 +12,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: write
+
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
@@ -43,6 +46,9 @@ jobs:
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee build.log | grep -E 'error:|warning: .*nearly matches|BUILD (SUCCEEDED|FAILED)' || true
           test -d build/Build/Products/Debug-iphonesimulator/Naksara.app
+          # WebView temsilci metotları (confirm, indirme vb.) imza uyuşmazlığı yüzünden bağlanmazsa derleyici "nearly matches" der.
+          if grep -q 'nearly matches' build.log; then grep 'nearly matches' build.log | sed 's/^/::error title=Bağlanmayan WebView metodu::/'; exit 1; fi
+          echo "::notice title=Derleme::Uyarısız derlendi; tüm WebView temsilci metotları bağlı."
 
       - name: Simülatörde aç ve ekran görüntüsü al
         run: |
@@ -60,6 +66,21 @@ jobs:
           mkdir -p shots
           xcrun simctl io "$UDID" screenshot shots/acilis.png
           echo "::notice title=Simülatör::Uygulama açıldı, ekran görüntüsü 'naksara-simulator' çıktısında."
+
+      - name: Ekran görüntüsünü ios-ciktilari dalına koy
+        if: success()
+        run: |
+          cp shots/acilis.png "$RUNNER_TEMP/acilis.png"
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git fetch origin ios-ciktilari 2>/dev/null && git checkout -B ios-ciktilari origin/ios-ciktilari || git checkout --orphan ios-ciktilari
+          git rm -rf --quiet . 2>/dev/null || true
+          cp "$RUNNER_TEMP/acilis.png" acilis.png
+          printf 'Son simülatör ekran görüntüsü (derleme %s, %s)\n\n![açılış](acilis.png)\n' "${{ github.run_number }}" "${GITHUB_SHA::7}" > README.md
+          git add acilis.png README.md
+          git commit -q -m "Simülatör ekran görüntüsü · derleme ${{ github.run_number }}" || true
+          git push -q origin ios-ciktilari
+          echo "::notice title=Ekran görüntüsü::https://github.com/${{ github.repository }}/blob/ios-ciktilari/acilis.png"
 
       - name: Çıktıları sakla
         if: always()
